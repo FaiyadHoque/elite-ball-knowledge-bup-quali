@@ -6,6 +6,10 @@ An HTTP service that reads natural-language campus operator notes with a languag
 model, converts them into machine-checkable directives, validates those directives
 deterministically, and returns a cost-minimal, fully valid 24-hour energy schedule.
 
+**Deployed judge endpoint**: `https://gridwise-llm-production-6051.up.railway.app`
+(`GET /health`, `POST /optimize-energy`) — verified live against both LLM providers
+and all 10 public sample cases; see §4.
+
 ```
 operator notes (English)
         │
@@ -203,7 +207,7 @@ python -m tests.run_samples
 
 # against a running or deployed service
 python -m tests.run_samples --url http://localhost:8000
-python -m tests.run_samples --url https://<your-deployment>
+python -m tests.run_samples --url https://gridwise-llm-production-6051.up.railway.app
 ```
 
 Expected result — all ten public cases pass both checks and match the organizer
