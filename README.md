@@ -323,6 +323,7 @@ the sole interpretation route.
 | — | `400` malformed JSON or structurally invalid request |
 | — | `500` controlled internal error, no stack trace, no secrets |
 | `GET /` | service metadata and configured providers (diagnostic) |
+| `GET /diagnostics` | live reachability probe for each LLM provider — HTTP status and a redacted error per provider, no key material (diagnostic) |
 | `GET /docs` | OpenAPI UI (diagnostic) |
 
 ---
@@ -338,8 +339,14 @@ It is public on GHCR and pullable without any credentials.
 
 ```
 ghcr.io/faiyadhoque/elite-ball-knowledge-bup-quali:1.0.0
-ghcr.io/faiyadhoque/elite-ball-knowledge-bup-quali@sha256:4a457d9517d64431ca28b2b86416f15f6a6b86f242d9ef7c2e5e87cf617ffbe9
+ghcr.io/faiyadhoque/elite-ball-knowledge-bup-quali@sha256:40fe00071f885b0f0a851445464829a4290014dddca10269c243b2e769ac21ac
 ```
+
+The `:1.0.0` tag is moving — it's overwritten on every push that touches
+`app/**`, `Dockerfile`, or `requirements.txt`, so the digest above is only
+current as of this commit. The digest itself is immutable and always points to
+this exact build; find the current one under the latest workflow run's
+**Summary** in the Actions tab.
 
 **Verified `docker run` command**
 
