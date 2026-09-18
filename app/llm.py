@@ -114,8 +114,14 @@ Anything describing how much solar, PV, panel or inverter output is available fo
 part of the day is a solar_reduction, however it is worded. Only use no_op when the
 note is not about today's electricity schedule at all.
 
-PERCENTAGES OF THE BATTERY resolve against the capacity given in the scenario.
+MINIMUM_BATTERY_RESERVE covers any instruction to keep energy in the battery, however
+it names the battery: "battery", "storage", "pack capacity", "cells", or no noun at all
+("ensure 100 kWh minimum", "hold back", "a floor of"). Percentages resolve against the
+capacity given in the scenario.
   "keep at least 50% of battery capacity" with capacity 200 -> minimum_energy_kwh 100
+  "maintain a floor of one quarter of pack capacity" with capacity 200 -> minimum_energy_kwh 50
+  "ensure 100 kWh minimum in storage" -> minimum_energy_kwh 100
+This is still minimum_battery_reserve even when the note never says the word "battery".
 
 CHARGE vs DISCHARGE. "charger isolated", "charging circuit unavailable", "do not charge" are
 no_charge_window. "must not discharge", "no discharging during relay testing" are no_discharge_window.
