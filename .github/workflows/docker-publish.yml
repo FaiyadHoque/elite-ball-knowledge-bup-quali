@@ -27,7 +27,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -38,6 +37,15 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
+
+      - name: Compute a lowercase image name
+        # GHCR (and the Docker CLI itself) rejects any uppercase letter in an
+        # image reference. github.repository preserves the account's original
+        # casing (FaiyadHoque/...), which "docker run" then refuses outright.
+        # Every later step reads IMAGE_NAME from here so it is lowercase
+        # everywhere at once, rather than only where an action happens to
+        # normalise it for you.
+        run: echo "IMAGE_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
