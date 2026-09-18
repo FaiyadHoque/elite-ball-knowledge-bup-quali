@@ -23,7 +23,7 @@ from .schemas import Battery, DIRECTIVE_TYPES
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
 
 
@@ -76,20 +76,43 @@ Directive types, and nothing else is allowed:
 - no_op                  - the note does not affect today's 24-hour electricity schedule. No other fields.
 
 HOUR WINDOWS. Always whole hours 0-23, start INCLUSIVE, end EXCLUSIVE.
-  "1 PM to 3 PM"        -> [13, 14]
-  "6 PM until 9 PM"     -> [18, 19, 20]
-  "2 AM until 5 AM"     -> [2, 3, 4]
-  "noon until 2 PM"     -> [12, 13]
-  "10 AM until noon"    -> [10, 11]
-  "between 13:00 and 15:00" -> [13, 14]
+
+The END HOUR IS NEVER INCLUDED. This holds for every joining word without
+exception: "to", "until", "till", "through", "and", or a dash. English often
+reads "through" as inclusive; here it is not. Treat them all identically.
+
+Check your work by counting: a window from START to END always contains exactly
+(END - START) hours. "7 PM through 10 PM" is 22 - 19 = 3 hours, not 4.
+  "1 PM to 3 PM"            -> [13, 14]              (15 - 13 = 2 hours)
+  "5 PM to 7 PM"            -> [17, 18]              (19 - 17 = 2 hours)
+  "6 PM until 9 PM"         -> [18, 19, 20]          (21 - 18 = 3 hours)
+  "7 PM through 10 PM"      -> [19, 20, 21]          (22 - 19 = 3 hours)
+  "8 PM-11 PM"              -> [20, 21, 22]          (23 - 20 = 3 hours)
+  "2 AM until 5 AM"         -> [2, 3, 4]             (5 - 2 = 3 hours)
+  "noon until 2 PM"         -> [12, 13]              (14 - 12 = 2 hours)
+  "10 AM until noon"        -> [10, 11]              (12 - 10 = 2 hours)
+  "between 13:00 and 15:00" -> [13, 14]              (15 - 13 = 2 hours)
 List every hour explicitly, ascending, no duplicates.
 
 SOLAR FACTOR is the fraction that REMAINS, never the fraction removed.
-  "drops to about 20%"          -> factor 0.2
-  "an 80% reduction"            -> factor 0.2
-  "roughly one-fifth of normal" -> factor 0.2
-  "about half the forecast"     -> factor 0.5
-  "treated as 25% of forecast"  -> factor 0.25
+
+Decide with the preposition. Words like "reduced BY", "cut BY", "knocked down BY",
+"a reduction OF", "drops BY" state what is LOST, so factor = 1 - that share.
+Words like "drops TO", "runs AT", "leaving", "treated AS", "only", "OF forecast",
+"OF normal", "OF rated output" state what is LEFT, so factor = that share.
+  "drops to about 20%"                -> factor 0.2
+  "an 80% reduction"                  -> factor 0.2   (80% lost, 20% left)
+  "knocked down by three quarters"    -> factor 0.25  (3/4 lost, 1/4 left)
+  "cut by 40%"                        -> factor 0.6   (40% lost, 60% left)
+  "roughly one-fifth of normal"       -> factor 0.2
+  "only a third of the usual yield"   -> factor 0.333
+  "about half the forecast"           -> factor 0.5
+  "running at 60% of rated output"    -> factor 0.6
+  "treated as 25% of forecast"        -> factor 0.25
+
+Anything describing how much solar, PV, panel or inverter output is available for
+part of the day is a solar_reduction, however it is worded. Only use no_op when the
+note is not about today's electricity schedule at all.
 
 PERCENTAGES OF THE BATTERY resolve against the capacity given in the scenario.
   "keep at least 50% of battery capacity" with capacity 200 -> minimum_energy_kwh 100
@@ -163,10 +186,17 @@ def _normalise(payload: Any, note_count: int) -> List[Tuple[str, Optional[Dict[s
 
         slots[index] = (directive_type, adjustment, explanation)
 
-    if all(slot is None for slot in slots):
-        raise InterpretationUnavailable("model returned no usable entries")
+    # The contract requires exactly one entry per note. A partial answer — seen
+    # when a provider truncates under a token-per-minute cap — would silently
+    # become no_op for the missing notes and quietly lose interpretation credit,
+    # so treat it as a provider failure and let the next provider try instead.
+    missing = [index for index, slot in enumerate(slots) if slot is None]
+    if missing:
+        raise InterpretationUnavailable(
+            f"model answered {note_count - len(missing)} of {note_count} notes"
+        )
 
-    return [slot or ("no_op", None, "") for slot in slots]
+    return [slot for slot in slots if slot is not None]
 
 
 async def _call_groq(

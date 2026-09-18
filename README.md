@@ -81,7 +81,7 @@ this repository**; `.env` is git-ignored and `.env.example` contains names only.
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `GROQ_API_KEY` | recommended | — | Primary interpretation provider. Free tier at console.groq.com. |
-| `GROQ_MODEL` | no | `llama-3.3-70b-versatile` | Groq model id. |
+| `GROQ_MODEL` | no | `openai/gpt-oss-120b` | Groq model id. |
 | `GEMINI_API_KEY` | recommended | — | Fallback interpretation provider. Free tier at aistudio.google.com. |
 | `GEMINI_MODEL` | no | `gemini-3.5-flash-lite` | Gemini model id. |
 | `LLM_TIMEOUT_SECONDS` | no | `8` | Per-provider HTTP timeout, kept well under the 30 s judging limit. |
@@ -95,7 +95,7 @@ key material.
 
 | Role | Provider · model |
 |---|---|
-| Primary operator-note interpretation | **Groq**, `llama-3.3-70b-versatile`, forced tool call, `temperature=0` |
+| Primary operator-note interpretation | **Groq**, `openai/gpt-oss-120b`, forced tool call, `temperature=0` |
 | Fallback operator-note interpretation | **Google Gemini**, `gemini-3.5-flash-lite`, `responseSchema` JSON mode, `temperature=0` |
 | Optimization | **HiGHS** linear solver via `scipy.optimize.linprog` — no model involved |
 
@@ -254,7 +254,7 @@ contains **no baked-in credentials** — keys are supplied at runtime with `-e`.
 | `httpx` | Async HTTP client for both model providers |
 | `python-dotenv` | Local `.env` loading (optional at runtime) |
 
-External services: **Groq API** (Llama 3.3 70B) and **Google Gemini API**
+External services: **Groq API** (`openai/gpt-oss-120b`) and **Google Gemini API**
 (Gemini 3.5 Flash Lite), both on free tiers. AI coding assistance was used during
 development; the architecture, LP formulation, guardrail design and test harness
 are the team's own work.
@@ -263,9 +263,16 @@ are the team's own work.
 
 ## 8. Known limitations
 
-* **Provider dependency.** Interpretation quality depends on Groq/Gemini
-  availability and free-tier quota. The deterministic fallback keeps the service
-  answering, but with narrower paraphrase coverage than the model.
+* **Provider dependency and free-tier quota.** Groq's free tier allows roughly
+  8000 tokens per minute, and one request costs about 1400, so sustained bursts
+  beyond ~5 requests/minute spill over to Gemini. That is by design: the
+  provider chain absorbs it and the schedule is unaffected. The deterministic
+  fallback keeps the service answering if both providers are exhausted, with
+  narrower paraphrase coverage than either model.
+* **Model availability shifts.** `llama-3.3-70b-versatile` and
+  `gemini-2.5-flash` were both withdrawn during development. The pinned ids
+  below are verified working; `tests/check_providers.py --models` lists what an
+  account can currently reach if one is retired again.
 * **Fallback coverage.** `app/fallback.py` handles the phrasings in
   `tests/test_robustness.py`; unusual wording outside that range resolves to
   `no_op` rather than risking an invented constraint.

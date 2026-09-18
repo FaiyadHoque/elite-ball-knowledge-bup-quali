@@ -127,12 +127,22 @@ async def interpret_live(notes: List[str]) -> List[Tuple[str, Optional[Dict[str,
 def main() -> int:
     notes = [case[0] for case in CASES]
 
+    # Hidden scenarios carry 1-3 notes, so interpret in batches of three rather
+    # than one oversized request: a batch far larger than the real contract can
+    # truncate under a provider token cap and is not what we are shipping.
     if os.getenv("LIVE_LLM"):
-        try:
-            candidates = asyncio.run(interpret_live(notes))
-        except llm.InterpretationUnavailable as exc:
-            print(f"{RED}live provider unavailable:{RESET} {exc}")
-            return 2
+        candidates = []
+        providers = set()
+        for start in range(0, len(notes), 3):
+            batch = notes[start:start + 3]
+            try:
+                batch_candidates, provider = asyncio.run(llm.interpret(batch, BATTERY))
+                providers.add(provider)
+            except llm.InterpretationUnavailable as exc:
+                print(f"{RED}live provider unavailable:{RESET} {exc}")
+                return 2
+            candidates.extend(batch_candidates)
+        print(f"provider: {', '.join(sorted(providers))} (batches of 3, as the real contract sends)")
     else:
         print("provider: deterministic-fallback (set LIVE_LLM=1 to test the model path)")
         candidates = fallback.interpret_all(notes, BATTERY)
