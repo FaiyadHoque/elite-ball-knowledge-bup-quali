@@ -339,7 +339,7 @@ It is public on GHCR and pullable without any credentials.
 
 ```
 ghcr.io/faiyadhoque/elite-ball-knowledge-bup-quali:1.0.0
-ghcr.io/faiyadhoque/elite-ball-knowledge-bup-quali@sha256:40fe00071f885b0f0a851445464829a4290014dddca10269c243b2e769ac21ac
+ghcr.io/faiyadhoque/elite-ball-knowledge-bup-quali@sha256:a4014c9b43a7cd012d2610beeeeb0b791ff0feab844f643cafc699365e839b17
 ```
 
 The `:1.0.0` tag is moving — it's overwritten on every push that touches
