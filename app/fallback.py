@@ -136,6 +136,7 @@ def extract_window(text: str) -> Optional[List[int]]:
         start_token, end_token = tokens[0], tokens[1]
 
     start_hour, end_hour = start_token[1], end_token[1]
+    morning_context = any(w in lowered for w in ("morning", "a.m", "am ", "overnight", "dawn"))
     afternoon_context = any(w in lowered for w in ("evening", "afternoon", "tonight", "pm"))
 
     # "1-3 PM": the trailing meridiem governs the bare start too.
@@ -143,8 +144,9 @@ def extract_window(text: str) -> Optional[List[int]]:
         if start_hour + 12 < end_hour or start_hour >= end_hour:
             start_hour += 12
 
-    # Neither end carries a meridiem: "from one until three".
-    if not start_token[2] and not end_token[2]:
+    # Neither end carries a meridiem: "from one until three". Solar work implies
+    # daylight hours, but an explicit "in the morning" always wins over that.
+    if not start_token[2] and not end_token[2] and not morning_context:
         implied_pm = afternoon_context or any(w in lowered for w in SOLAR_WORDS)
         if implied_pm and start_hour < 12 and end_hour <= 12:
             start_hour += 12

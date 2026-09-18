@@ -27,6 +27,7 @@ except ImportError:
 
 from app import fallback, llm  # noqa: E402
 from app.directives import build_interpretation  # noqa: E402
+from app.service import normalise_window_end  # noqa: E402
 from app.schemas import Battery  # noqa: E402
 
 GREEN, RED, RESET = "\033[32m", "\033[31m", "\033[0m"
@@ -123,9 +124,17 @@ def main() -> int:
         print("provider: deterministic-fallback")
         candidates = fallback.interpret_all(notes, BATTERY)
 
+    # Build the entries then run the same deterministic normalisation the
+    # service applies, so the test exercises the shipped path end to end.
+    entries = [
+        build_interpretation(index, candidate[0], candidate[1], candidate[2], BATTERY)
+        for index, candidate in enumerate(candidates)
+    ]
+    if os.getenv("LIVE_LLM"):
+        normalise_window_end(entries, notes)
+
     passed = 0
-    for index, ((note, expected_type, expected_adjustment), candidate) in enumerate(zip(CASES, candidates)):
-        entry = build_interpretation(index, candidate[0], candidate[1], candidate[2], BATTERY)
+    for index, ((note, expected_type, expected_adjustment), entry) in enumerate(zip(CASES, entries)):
         ok = matches(entry, expected_type, expected_adjustment)
         passed += ok
         if not ok:

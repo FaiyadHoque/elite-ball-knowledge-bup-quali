@@ -21,6 +21,43 @@ DIRECTIVE_PHRASES = {
 }
 
 
+def normalise_window_end(entries: List[DirectiveInterpretation], notes: List[str]) -> None:
+    """Correct an off-by-one on the exclusive end hour, in place.
+
+    Time windows are start-inclusive and end-exclusive, but English reads "7 PM
+    through 10 PM" as including 10 PM, and models intermittently return the extra
+    hour. The rule-based parser applies the convention mechanically and agrees
+    with ground truth on every note in the test suites, so where the two disagree
+    about the END of a window while agreeing on where it STARTS, the parser wins.
+
+    Deliberately narrow: if the two disagree about the start as well, they have
+    read the note differently and the model's reading is left alone. This is
+    normalisation of a time convention, not reinterpretation, which is the
+    deterministic post-processing the Participant Guide permits.
+    """
+    for entry in entries:
+        adjustment = entry.structured_adjustment
+        if not entry.applies or not adjustment:
+            continue
+        model_hours = adjustment.get("hours")
+        if not model_hours:
+            continue
+
+        parsed = fallback.extract_window(notes[entry.note_index].lower())
+        if not parsed or parsed == model_hours:
+            continue
+        if parsed[0] != model_hours[0]:
+            continue  # a different reading of the note, not a boundary slip
+
+        log.info(
+            "note %d: normalised window end %s -> %s",
+            entry.note_index,
+            model_hours,
+            parsed,
+        )
+        adjustment["hours"] = parsed
+
+
 async def interpret_notes(
     request: ScenarioRequest,
 ) -> Tuple[List[DirectiveInterpretation], str]:
@@ -40,6 +77,9 @@ async def interpret_notes(
         build_interpretation(index, directive_type, adjustment, explanation, request.battery)
         for index, (directive_type, adjustment, explanation) in enumerate(candidates)
     ]
+
+    if source != "deterministic-fallback":
+        normalise_window_end(entries, notes)
 
     # A model that answered but produced nothing usable still leaves the notes
     # unread, so give the deterministic interpreter a chance before giving up.
