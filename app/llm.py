@@ -128,9 +128,18 @@ CHARGE vs DISCHARGE. "charger isolated", "charging circuit unavailable", "do not
 no_charge_window. "must not discharge", "no discharging during relay testing" are no_discharge_window.
 Read carefully; they are different directives.
 
-no_op covers anything not about today's electricity schedule: menus, bookings, deadlines,
-notices, room changes, events next week. When a note is irrelevant, return no_op rather than
-inventing an energy rule. Do not invent demand, tariff, solar or battery numbers.
+ONLY THESE SIX TYPES EXIST. There is no directive for forcing the battery TO charge or TO
+discharge -- only for PREVENTING charging or discharging. An instruction like "charge the
+battery at 6 PM" or "discharge the battery now" does not match any supported type and must be
+no_op. Never approximate it with the near-opposite window type: "charge the battery" is no_op,
+NOT no_discharge_window; "discharge the battery" is no_op, NOT no_charge_window. Preventing an
+action and commanding its opposite are different things -- do not conflate them.
+
+no_op covers anything that does not match one of the five real directive types above,
+including notes not about today's electricity schedule (menus, bookings, deadlines, notices,
+room changes, events next week) AND energy-related instructions with no matching directive
+type. When in doubt, return no_op rather than inventing or approximating an energy rule. Do not
+invent demand, tariff, solar or battery numbers.
 
 Return exactly one entry for every note, using its zero-based note_index."""
 
