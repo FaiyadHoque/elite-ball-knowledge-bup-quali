@@ -64,16 +64,103 @@ curl http://localhost:8000/health
 ```bash
 curl -X POST http://localhost:8000/optimize-energy \
   -H "Content-Type: application/json" \
-  -d @sample_request.json
+  -d @sample_request_small.json
 ```
 
 A successful call returns `200` with `scenario_id`, `directive_interpretation`
 (one entry per note, in `note_index` order), `hourly_plan` (24 entries),
-`total_grid_kwh`, `total_cost_bdt`, `peak_grid_kwh` and `plan_summary`.
+`total_grid_kwh`, `total_cost_bdt`, `peak_grid_kwh` and `plan_summary`. A worked
+example is in the next section; a second request built from the public sample
+pack is at [`sample_request.json`](sample_request.json).
 
 ---
 
-## 2. Configuration
+## 2. Sample request / response
+
+The full request below is [`sample_request_small.json`](sample_request_small.json) —
+send it exactly as shown with `curl -X POST .../optimize-energy -d @sample_request_small.json`.
+The response is the service's actual live output (`hourly_plan` is 24 entries;
+representative hours are shown here, with `...` marking the rest).
+
+**Request**
+
+```json
+{
+  "scenario_id": "README-DEMO",
+  "operator_notes": [
+    "Solar output will drop to about 20% from 1 PM to 3 PM.",
+    "Keep at least 50 kWh in the battery from 6 PM until 9 PM.",
+    "The cafeteria menu changes tomorrow."
+  ],
+  "hours": [
+    {"hour": 0, "demand_kwh": 90, "solar_kwh": 0, "tariff_bdt_per_kwh": 6},
+    {"hour": 1, "demand_kwh": 85, "solar_kwh": 0, "tariff_bdt_per_kwh": 6},
+    "...": "21 more hourly entries",
+    {"hour": 23, "demand_kwh": 105, "solar_kwh": 0, "tariff_bdt_per_kwh": 7}
+  ],
+  "battery": {
+    "capacity_kwh": 220,
+    "initial_energy_kwh": 110,
+    "minimum_energy_kwh": 40,
+    "max_charge_kwh_per_hour": 50,
+    "max_discharge_kwh_per_hour": 50
+  }
+}
+```
+
+**Response** (`200`, produced by the live service — `openai/gpt-oss-120b` via Groq)
+
+```json
+{
+  "scenario_id": "README-DEMO",
+  "directive_interpretation": [
+    {
+      "note_index": 0,
+      "applies": true,
+      "directive_type": "solar_reduction",
+      "structured_adjustment": {"hours": [13, 14], "factor": 0.2},
+      "explanation": "Solar output reduced to 20% of normal between 1 PM and 3 PM."
+    },
+    {
+      "note_index": 1,
+      "applies": true,
+      "directive_type": "minimum_battery_reserve",
+      "structured_adjustment": {"hours": [18, 19, 20], "minimum_energy_kwh": 50.0},
+      "explanation": "Maintain at least 50 kWh in the battery from 6 PM to 9 PM."
+    },
+    {
+      "note_index": 2,
+      "applies": false,
+      "directive_type": "no_op",
+      "structured_adjustment": null,
+      "explanation": "The note concerns a cafeteria menu change and does not affect today's electricity schedule."
+    }
+  ],
+  "hourly_plan": [
+    {"hour": 0, "grid_kwh": 90.0, "solar_used_kwh": 0.0, "battery_action": "idle", "battery_kwh": 0.0, "battery_energy_after_kwh": 110.0},
+    {"hour": 1, "grid_kwh": 45.0, "solar_used_kwh": 0.0, "battery_action": "discharge", "battery_kwh": 40.0, "battery_energy_after_kwh": 70.0},
+    "...": "20 more hourly entries",
+    {"hour": 18, "grid_kwh": 155.0, "solar_used_kwh": 0.0, "battery_action": "discharge", "battery_kwh": 50.0, "battery_energy_after_kwh": 150.0},
+    {"hour": 19, "grid_kwh": 165.0, "solar_used_kwh": 0.0, "battery_action": "discharge", "battery_kwh": 50.0, "battery_energy_after_kwh": 100.0},
+    {"hour": 23, "grid_kwh": 155.0, "solar_used_kwh": 0.0, "battery_action": "charge", "battery_kwh": 50.0, "battery_energy_after_kwh": 110.0}
+  ],
+  "total_grid_kwh": 2678.0,
+  "total_cost_bdt": 38000.0,
+  "peak_grid_kwh": 192.0,
+  "plan_summary": "Charged the battery in 7 cheap hours and discharged it in 9 expensive hours, using solar first and returning the battery to its starting energy by the end of hour 23. Applied reduced solar availability, a raised battery reserve from the operator notes. Total grid import 2678.00 kWh at a cost of 38000.00 BDT, peaking at 192.00 kWh."
+}
+```
+
+Note hour 23's `battery_energy_after_kwh` (110.0) exactly equals the request's
+`initial_energy_kwh` — end-of-day neutrality holds — and hour 18-20 stay at or
+above the 50 kWh reserve the second note requested.
+
+To regenerate this example against your own running service:
+`python -m tests.make_readme_sample` (writes `tests/_readme_response.json`).
+
+---
+
+## 3. Configuration
 
 All configuration is environment variables. **No secret values are committed to
 this repository**; `.env` is git-ignored and `.env.example` contains names only.
@@ -104,7 +191,7 @@ required at runtime.
 
 ---
 
-## 3. Running the public sample cases
+## 4. Running the public sample cases
 
 The repository ships a scoring harness that mirrors what the judge does: it
 compares the structured interpretation against the published ground truth **and**
@@ -141,7 +228,7 @@ LIVE_LLM=1 python -m tests.test_robustness # the configured model provider
 
 ---
 
-## 4. How the pipeline works
+## 5. How the pipeline works
 
 ### Stage 1 — LLM interpretation (`app/llm.py`) — *mandatory stage*
 
@@ -156,6 +243,17 @@ The system prompt pins the three rules that hidden paraphrases hinge on:
 * Windows are **start-inclusive, end-exclusive** — "6 PM until 9 PM" → `[18,19,20]`.
 * `factor` is the fraction that **remains** — "an 80% reduction" → `0.2`.
 * Battery percentages resolve against the scenario's `capacity_kwh`.
+
+### Stage 1b — Window-end normalisation (`app/service.py`)
+
+Time windows are start-inclusive, end-exclusive, but a model occasionally
+returns one hour too many on phrasing like "7 PM through 10 PM" (English often
+reads "through" as inclusive). A deterministic parser — the same one used by
+the safe-failure fallback — re-derives the window from the note text; where it
+agrees with the model on the window's start but disagrees on the end, the
+parser's boundary wins. If it disagrees on the start too, that is a different
+reading of the note, not a boundary slip, and the model's answer is left alone.
+This is normalisation of a time convention, not reinterpretation of the note.
 
 ### Stage 2 — Deterministic guardrails (`app/directives.py`)
 
@@ -212,7 +310,7 @@ the sole interpretation route.
 
 ---
 
-## 5. API contract
+## 6. API contract
 
 | Endpoint | Behaviour |
 |---|---|
@@ -225,7 +323,7 @@ the sole interpretation route.
 
 ---
 
-## 6. Docker fallback
+## 7. Docker fallback
 
 ```bash
 docker build -t gridwise-llm:1.0.0 .
@@ -244,7 +342,7 @@ contains **no baked-in credentials** — keys are supplied at runtime with `-e`.
 
 ---
 
-## 7. Dependencies and credits
+## 8. Dependencies and credits
 
 | Package | Role |
 |---|---|
@@ -261,7 +359,7 @@ are the team's own work.
 
 ---
 
-## 8. Known limitations
+## 9. Known limitations
 
 * **Provider dependency and free-tier quota.** Groq's free tier allows roughly
   8000 tokens per minute, and one request costs about 1400, so sustained bursts
@@ -286,7 +384,7 @@ are the team's own work.
   `plan_summary` rather than failing the request.
 * **No grid export.** Surplus solar is curtailed, per the Problem Statement.
 
-## 9. Secret handling
+## 10. Secret handling
 
 * `.env` is git-ignored; only `.env.example` (names, no values) is committed.
 * No key, token, prompt containing a key, or raw stack trace is written to logs
