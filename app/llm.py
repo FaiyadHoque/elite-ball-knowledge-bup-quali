@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -310,3 +311,83 @@ async def interpret(
                 errors.append(f"{name}: {type(exc).__name__}")
 
     raise InterpretationUnavailable("; ".join(errors) or "no provider configured")
+
+
+def _redact(text: str) -> str:
+    """Strip anything that looks like a key out of a provider error message."""
+    for name in ("GROQ_API_KEY", "GEMINI_API_KEY"):
+        value = os.getenv(name)
+        if value:
+            text = text.replace(value, f"<{name}>")
+    return text[:300]
+
+
+async def _probe_groq(client: httpx.AsyncClient, timeout: float) -> Dict[str, Any]:
+    model = os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL)
+    result: Dict[str, Any] = {"provider": "groq", "model": model}
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        result["status"] = "not_configured"
+        return result
+
+    response = await client.post(
+        GROQ_URL,
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": "Reply with the single word: ok"}],
+            "max_tokens": 5,
+        },
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=timeout,
+    )
+    result["http_status"] = response.status_code
+    result["status"] = "ok" if response.status_code == 200 else "error"
+    if response.status_code != 200:
+        result["detail"] = _redact(response.text)
+    return result
+
+
+async def _probe_gemini(client: httpx.AsyncClient, timeout: float) -> Dict[str, Any]:
+    model = os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    result: Dict[str, Any] = {"provider": "gemini", "model": model}
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        result["status"] = "not_configured"
+        return result
+
+    response = await client.post(
+        GEMINI_URL.format(model=model),
+        json={"contents": [{"role": "user", "parts": [{"text": "Reply with the single word: ok"}]}]},
+        headers={"x-goog-api-key": api_key},
+        timeout=timeout,
+    )
+    result["http_status"] = response.status_code
+    result["status"] = "ok" if response.status_code == 200 else "error"
+    if response.status_code != 200:
+        result["detail"] = _redact(response.text)
+    return result
+
+
+async def probe() -> Dict[str, Any]:
+    """Live reachability check for every provider, for deployment debugging.
+
+    Deliberately separate from interpret(): this reports WHY a provider is
+    failing, where the request path only records that it did. Errors are
+    redacted, so no key material can leave the service.
+    """
+    timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "8"))
+    results: List[Dict[str, Any]] = []
+
+    async with httpx.AsyncClient() as client:
+        for name, probe_call in (("groq", _probe_groq), ("gemini", _probe_gemini)):
+            started = time.perf_counter()
+            try:
+                entry = await probe_call(client, timeout)
+            except httpx.HTTPError as exc:
+                # A timeout here is the single most useful signal: it means the
+                # key and model are fine and LLM_TIMEOUT_SECONDS is too tight.
+                entry = {"provider": name, "status": "network_error", "detail": type(exc).__name__}
+            entry["elapsed_seconds"] = round(time.perf_counter() - started, 2)
+            results.append(entry)
+
+    return {"timeout_seconds": timeout, "providers": results}

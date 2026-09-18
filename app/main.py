@@ -64,9 +64,20 @@ async def health() -> dict:
 async def root() -> dict:
     return {
         "service": "gridwise-llm",
-        "endpoints": ["GET /health", "POST /optimize-energy"],
+        "endpoints": ["GET /health", "GET /diagnostics", "POST /optimize-energy"],
         "interpretation_providers": llm.configured_providers() or ["deterministic-fallback-only"],
     }
+
+
+@app.get("/diagnostics")
+async def diagnostics() -> dict:
+    """Live provider reachability, for debugging a deployment.
+
+    Reports the HTTP status and redacted error each provider returns, so a
+    fallback in production can be traced to a key, a model id, or a timeout
+    without reading container logs. Never returns key material.
+    """
+    return await llm.probe()
 
 
 @app.post("/optimize-energy", response_model=OptimizeResponse)
