@@ -83,7 +83,7 @@ this repository**; `.env` is git-ignored and `.env.example` contains names only.
 | `GROQ_API_KEY` | recommended | — | Primary interpretation provider. Free tier at console.groq.com. |
 | `GROQ_MODEL` | no | `llama-3.3-70b-versatile` | Groq model id. |
 | `GEMINI_API_KEY` | recommended | — | Fallback interpretation provider. Free tier at aistudio.google.com. |
-| `GEMINI_MODEL` | no | `gemini-2.0-flash` | Gemini model id. |
+| `GEMINI_MODEL` | no | `gemini-3.5-flash-lite` | Gemini model id. |
 | `LLM_TIMEOUT_SECONDS` | no | `8` | Per-provider HTTP timeout, kept well under the 30 s judging limit. |
 | `LOG_LEVEL` | no | `INFO` | Standard Python log level. |
 | `PORT` | no | `8000` | Port the container binds on `0.0.0.0`. |
@@ -96,7 +96,7 @@ key material.
 | Role | Provider · model |
 |---|---|
 | Primary operator-note interpretation | **Groq**, `llama-3.3-70b-versatile`, forced tool call, `temperature=0` |
-| Fallback operator-note interpretation | **Google Gemini**, `gemini-2.0-flash`, `responseSchema` JSON mode, `temperature=0` |
+| Fallback operator-note interpretation | **Google Gemini**, `gemini-3.5-flash-lite`, `responseSchema` JSON mode, `temperature=0` |
 | Optimization | **HiGHS** linear solver via `scipy.optimize.linprog` — no model involved |
 
 Both providers are called over plain HTTPS with `httpx`, so no vendor SDK is
@@ -255,7 +255,7 @@ contains **no baked-in credentials** — keys are supplied at runtime with `-e`.
 | `python-dotenv` | Local `.env` loading (optional at runtime) |
 
 External services: **Groq API** (Llama 3.3 70B) and **Google Gemini API**
-(Gemini 2.0 Flash), both on free tiers. AI coding assistance was used during
+(Gemini 3.5 Flash Lite), both on free tiers. AI coding assistance was used during
 development; the architecture, LP formulation, guardrail design and test harness
 are the team's own work.
 

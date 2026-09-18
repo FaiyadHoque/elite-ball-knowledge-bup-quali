@@ -15,6 +15,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+try:  # load .env so the harness sees the same config as the service
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 from app import fallback, llm  # noqa: E402
 from app.directives import build_interpretation  # noqa: E402
 from app.schemas import Battery  # noqa: E402
