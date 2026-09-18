@@ -325,20 +325,46 @@ the sole interpretation route.
 
 ## 7. Docker fallback
 
+The image is built and published automatically by
+[`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)
+on every push to `main` — no local Docker install is required to reproduce it.
+It is public on GHCR and pullable without any credentials.
+
+**Registry image reference**
+
+```
+ghcr.io/faiyadhoque/elite-ball-knowledge-bup-quali:1.0.0
+ghcr.io/faiyadhoque/elite-ball-knowledge-bup-quali@sha256:4a457d9517d64431ca28b2b86416f15f6a6b86f242d9ef7c2e5e87cf617ffbe9
+```
+
+**Verified `docker run` command**
+
 ```bash
-docker build -t gridwise-llm:1.0.0 .
+docker pull ghcr.io/faiyadhoque/elite-ball-knowledge-bup-quali:1.0.0
 
 docker run --rm -p 8000:8000 \
   -e GROQ_API_KEY="$GROQ_API_KEY" \
   -e GEMINI_API_KEY="$GEMINI_API_KEY" \
-  gridwise-llm:1.0.0
+  ghcr.io/faiyadhoque/elite-ball-knowledge-bup-quali:1.0.0
 
 curl http://localhost:8000/health
 # {"status":"ok"}
 ```
 
-The image binds `0.0.0.0` on `$PORT` (default `8000`), ships a `HEALTHCHECK`, and
-contains **no baked-in credentials** — keys are supplied at runtime with `-e`.
+The image binds `0.0.0.0` on `$PORT` (default `8000`), ships a `HEALTHCHECK`,
+and contains **no baked-in credentials** — keys are supplied at runtime with
+`-e`. The CI workflow itself runs this exact `docker run` + `/health` sequence
+against the freshly pushed image before ever reporting success, so a broken
+image cannot pass silently.
+
+To build locally instead (once Docker is available on your machine):
+
+```bash
+docker build -t gridwise-llm:1.0.0 .
+docker run --rm -p 8000:8000 \
+  -e GROQ_API_KEY="$GROQ_API_KEY" -e GEMINI_API_KEY="$GEMINI_API_KEY" \
+  gridwise-llm:1.0.0
+```
 
 ---
 
